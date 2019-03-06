@@ -3,35 +3,27 @@ package com.mickale.pindropdistance;
 
 import android.Manifest;
 import android.content.Intent;
-import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.location.Location;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Toast;
-
+//import android.widget.Toast;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.LocationSettingsRequest;
-import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
-import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.android.gms.tasks.Task;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.util.concurrent.Executor;
@@ -40,46 +32,59 @@ import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
 
 public class MapFragment extends Fragment implements OnMapReadyCallback, FloatingActionButton.OnClickListener {
 
     private String TAG = "MAP";
 
-    public static final int REQUEST_ACCESS_startLocationUpdates = 0;
-    public static final int REQUEST_ACCESS_onConnected = 1;
-    private static final int REQUEST_CHECK_SETTINGS = 0x1;
+    private final int MY_PERMISSIONS_REQUEST_FINE_LOCATION = 0;
+    private final int MY_PERMISSIONS_REQUEST_COARSE_LOCATION = 1;
+
+    private DisplayFragment photoViewer;
+
+    private boolean requestingLocationUpdates = false;
+
+    private int imageID = 0;
+    private Bitmap[] photos = new Bitmap[100];
+    private FragmentManager fragmentManager;
 
     private GoogleMap map;
-    FloatingActionButton fab;
-    View myView;
+    private FloatingActionButton fab;
+    private View myView;
 
     private FusedLocationProviderClient myFusedLocationClient;
-    LocationRequest myLocationRequest;
-    Location myLastLocation;
+    //LocationRequest myLocationRequest;
+    private Location myLastLocation;
+    //private LocationCallback locationCallback;
+    //private LocationSettingsRequest.Builder builder;
+    //private SettingsClient client;
 
     public MapFragment() {
         // Required empty public constructor
     }
+
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         myFusedLocationClient = LocationServices.getFusedLocationProviderClient(this.getActivity());
+
+        requestPermissions();
+
         Log.v(TAG, "starting");
-        getLastLocation();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-
     }
 
     @Override
     public void onPause() {
         super.onPause();
-
     }
 
     @Override
@@ -92,10 +97,10 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
             ((ViewGroup) container.getParent()).removeView(myView);
             return myView;
         }
-
+        fragmentManager = getActivity().getSupportFragmentManager();
         fab = myView.findViewById(R.id.cameraFAB);
         fab.setOnClickListener(this);
-
+        requestingLocationUpdates = true;
         ((SupportMapFragment) getChildFragmentManager().findFragmentById(R.id.map)).getMapAsync(this);
         return myView;
     }
@@ -108,23 +113,25 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
             @Override
             public boolean onMarkerClick(Marker marker) {
                 //In here we should show the picture
-
+                photoViewer = DisplayFragment.newInstance();
+                photoViewer.setPicture(photos[Integer.parseInt(marker.getTitle())]);
+                FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
+                //May need to check here
+                fragmentTransaction.replace(R.id.LinearLayout1, photoViewer);
+                fragmentTransaction.addToBackStack(null);
+                fragmentTransaction.commit();
                 return false;
             }
         });
     }
 
-
     @Override
     public void onClick(View v) {
         Log.d(TAG, "Onclicked");
-        if (v == fab) {
-            //Ask for location permission and camera permission
-
+        if (v == fab){
             //Launch camera intent
             Intent intent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
             startActivityForResult(intent, 0);
-
         }
     }
 
@@ -138,67 +145,104 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
         if (extras != null) {
             //if you know for a fact there will be a bundle, you can use  data.getExtras().get("Data");  but we don't know.
             Bitmap bp = (Bitmap) extras.get("data");
+            //Should check for location and pass it to the marker
+            getLastLocation();
+            makeMarker(bp);
         } else {
             //No results
+            Log.d(TAG, "No message");
 
         }
     }
 
-    protected void startIntentService() {
-        // Create an intent for passing to the intent service responsible for fetching the address.
-        Intent intent = new Intent(this.getContext(), FetchAddressIntentService.class);
-
-        // Pass the location data as an extra to the service.
-        intent.putExtra(Constants.LOCATION_DATA_EXTRA, myLastLocation);
-
-        // Start the service. If the service isn't already running, it is instantiated and started
-        // (creating a process for it if needed); if it is running then it remains running. The
-        // service kills itself automatically once all intents are processed.
-        ////startService(intent);
+    private void makeMarker(Bitmap bm){
+        MarkerOptions markerOptions = new MarkerOptions()
+                //.icon(BitmapDescriptorFactory.fromBitmap(bm))
+                .position(new LatLng(myLastLocation.getLatitude(),myLastLocation.getLongitude()))
+                .title(Integer.toString(imageID));
+        map.addMarker(markerOptions);
+        photos[imageID] = bm;
+        imageID++;
     }
 
-    public void getLastLocation() {
-        //first check to see if I have permissions (marshmallow) if I don't then ask, otherwise start up the demo.
-        if ((ContextCompat.checkSelfPermission(this.getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) &&
-                (ContextCompat.checkSelfPermission(this.getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)) {
-            //I'm on not explaining why, just asking for permission.
-            Log.v(TAG, "asking for permissions");
-            ActivityCompat.requestPermissions(this.getActivity(), new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
-                    MapFragment.REQUEST_ACCESS_onConnected);
-            return;
+    private void requestPermissions(){
+        if (ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Permission is not granted
+            ActivityCompat.requestPermissions(this.getActivity(),
+                    new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
+                    MY_PERMISSIONS_REQUEST_COARSE_LOCATION);
+
         }
+        if (ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Permission is not granted
+            ActivityCompat.requestPermissions(this.getActivity(),
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    MY_PERMISSIONS_REQUEST_FINE_LOCATION);
+        }
+
         myFusedLocationClient.getLastLocation()
-                .addOnSuccessListener((Executor) this, new OnSuccessListener<Location>() {
+                .addOnSuccessListener(this.getActivity(), new OnSuccessListener<Location>() {
                     @Override
                     public void onSuccess(Location location) {
-                        if (location == null) {
-                            Log.w(TAG, "onSuccess:null");
-                            //logger.append("Last location: None");
-                            return;
+                        // Got last known location. In some rare situations this can be null.
+                        if (location != null) {
+                            // Logic to handle location object
+                            myLastLocation = location;
                         }
-                        myLastLocation = location;
-
-                        Log.v(TAG, "getLastLocation");
-                        if (myLastLocation != null) {
-
-                            startIntentService();
-                        }
-                    }
-                })
-                .addOnFailureListener((Executor) this, new OnFailureListener() {
-                    @Override
-                    public void onFailure(@NonNull Exception e) {
-                        Log.w(TAG, "getLastLocation:onFailure", e);
-                        Toast.makeText(getActivity(), "GPS access NOT granted", Toast.LENGTH_SHORT).show();
-                        //logger.append("Last location: Fail");
                     }
                 });
 
     }
 
-    protected void makeMarker(Location pinLocation, Bitmap bm){
-        MarkerOptions markerOptions = new MarkerOptions().icon(BitmapDescriptorFactory.fromBitmap(bm)).position(new LatLng(0,0));
-        map.addMarker(markerOptions);
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           String permissions[], int[] grantResults) {
+        switch (requestCode) {
+            case MY_PERMISSIONS_REQUEST_COARSE_LOCATION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted, yay! Do the
+                    // contacts-related task you need to do.
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                return;
+            }
+            case MY_PERMISSIONS_REQUEST_FINE_LOCATION: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted, yay! Do the
+                    // contacts-related task you need to do.
+                } else {
+                    // permission denied, boo! Disable the
+                    // functionality that depends on this permission.
+                }
+                return;
+            }
+            // other 'case' lines to check for other
+            // permissions this app might request.
+        }
     }
 
+    private void getLastLocation(){
+        if(ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+        && ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED){
+            myFusedLocationClient.getLastLocation()
+                    .addOnCompleteListener((Executor) this, new OnCompleteListener<Location>() {
+                        @Override
+                        public void onComplete(@NonNull Task<Location> task) {
+                            if(task.isSuccessful() && task.getResult() != null){
+                                myLastLocation = task.getResult();
+                            }
+                        }
+                    });
+        }
+    }
 }
