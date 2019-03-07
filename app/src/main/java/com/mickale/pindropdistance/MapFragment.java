@@ -15,6 +15,7 @@ import android.view.ViewGroup;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
@@ -141,14 +142,17 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
         //the picture is stored in the intent in the data key.
         //get the picture and show it in an the imagview.
         //Note the picture is not stored on the filesystem, so this is the only "copy" of the picture.
-        Bundle extras = data.getExtras();
-        if (extras != null) {
-            //if you know for a fact there will be a bundle, you can use  data.getExtras().get("Data");  but we don't know.
-            Bitmap bp = (Bitmap) extras.get("data");
-            //Should check for location and pass it to the marker
-            getLastLocation();
-            makeMarker(bp);
-        } else {
+        if (data != null) {
+            Bundle extras = data.getExtras();
+            if (extras != null) {
+                //if you know for a fact there will be a bundle, you can use  data.getExtras().get("Data");  but we don't know.
+                Bitmap bp = (Bitmap) extras.get("data");
+                //Should check for location and pass it to the marker
+                getLastLocation();
+                makeMarker(bp);
+            }
+        }
+       else {
             //No results
             Log.d(TAG, "No message");
 
@@ -156,11 +160,23 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
     }
 
     private void makeMarker(Bitmap bm){
-        MarkerOptions markerOptions = new MarkerOptions()
-                //.icon(BitmapDescriptorFactory.fromBitmap(bm))
-                .position(new LatLng(myLastLocation.getLatitude(),myLastLocation.getLongitude()))
-                .title(Integer.toString(imageID));
+        MarkerOptions markerOptions;
+        if (myLastLocation != null){
+            markerOptions = new MarkerOptions()
+                    //.icon(BitmapDescriptorFactory.fromBitmap(bm))
+                    .position(new LatLng(myLastLocation.getLatitude(),myLastLocation.getLongitude()))
+                    .title(Integer.toString(imageID));
+                    //.draggable(true);
+        }
+        else{
+            markerOptions = new MarkerOptions()
+                    //.icon(BitmapDescriptorFactory.fromBitmap(bm))
+                    .position(new LatLng(0.0,0.0))
+                    .title(Integer.toString(imageID));
+                    //.draggable(true);
+        }
         map.addMarker(markerOptions);
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(markerOptions.getPosition(), 12.0f));
         photos[imageID] = bm;
         imageID++;
     }
