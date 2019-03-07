@@ -12,4 +12,3 @@ Phone Resolution: 2560x1312 (505 ppi) Phone: Essential PH-1 (Phone) Android Vers
 Github Repo: https://github.com/cosc4735sp19/am_program2-MickaleB
 
 Anything that doesn't work:
-Location (Probally)
