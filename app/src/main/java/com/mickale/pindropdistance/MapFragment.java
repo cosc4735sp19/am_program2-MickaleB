@@ -14,6 +14,9 @@ import android.view.ViewGroup;
 //import android.widget.Toast;
 
 import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -45,10 +48,11 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
 
     private DisplayFragment photoViewer;
 
-    private boolean requestingLocationUpdates = false;
+    private boolean  mRequestingLocationUpdates = false;
 
-    private int imageID = 0;
-    private Bitmap[] photos = new Bitmap[100];
+    private MarkerPhoto[] photoConnector = new MarkerPhoto[128];
+    private int photoConnectorTracker = 0;
+
     private FragmentManager fragmentManager;
 
     private GoogleMap map;
@@ -56,11 +60,11 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
     private View myView;
 
     private FusedLocationProviderClient myFusedLocationClient;
-    //LocationRequest myLocationRequest;
+    private LocationRequest locationRequest;
     private Location myLastLocation;
-    //private LocationCallback locationCallback;
-    //private LocationSettingsRequest.Builder builder;
-    //private SettingsClient client;
+    private LocationCallback locationCallback;
+
+    private static final LatLng ENGINEERING = new LatLng(41.314098, -105.582054);
 
     public MapFragment() {
         // Required empty public constructor
@@ -75,17 +79,37 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
 
         requestPermissions();
 
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                if (locationResult == null) {
+                    return;
+                }
+                for (Location location : locationResult.getLocations()) {
+                    myLastLocation = location;
+                    // Update UI with location data
+                    // ...
+                }
+            }
+        };
+
         Log.v(TAG, "starting");
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        requestPermissions();
+        if ( mRequestingLocationUpdates) {
+            startLocationUpdates();
+        }
+
     }
 
     @Override
     public void onPause() {
         super.onPause();
+        stopLocationUpdates();
     }
 
     @Override
@@ -101,7 +125,7 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
         fragmentManager = getActivity().getSupportFragmentManager();
         fab = myView.findViewById(R.id.cameraFAB);
         fab.setOnClickListener(this);
-        requestingLocationUpdates = true;
+        mRequestingLocationUpdates = true;
         ((SupportMapFragment) getChildFragmentManager().findFragmentById(R.id.map)).getMapAsync(this);
         return myView;
     }
@@ -110,12 +134,13 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
     public void onMapReady(GoogleMap googleMap) {
         map = googleMap;
         //map.setMapType(GoogleMap.MAP_TYPE_NORMAL);
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(ENGINEERING, 15));
         map.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
             @Override
             public boolean onMarkerClick(Marker marker) {
                 //In here we should show the picture
                 photoViewer = DisplayFragment.newInstance();
-                photoViewer.setPicture(photos[Integer.parseInt(marker.getTitle())]);
+                photoViewer.setPicture(findPhotoByID(marker.getId()));
                 FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
                 //May need to check here
                 fragmentTransaction.replace(R.id.LinearLayout1, photoViewer);
@@ -161,24 +186,22 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
 
     private void makeMarker(Bitmap bm){
         MarkerOptions markerOptions;
+        Marker m;
         if (myLastLocation != null){
             markerOptions = new MarkerOptions()
-                    //.icon(BitmapDescriptorFactory.fromBitmap(bm))
-                    .position(new LatLng(myLastLocation.getLatitude(),myLastLocation.getLongitude()))
-                    .title(Integer.toString(imageID));
+                    .position(new LatLng(myLastLocation.getLatitude(),myLastLocation.getLongitude()));
                     //.draggable(true);
         }
         else{
             markerOptions = new MarkerOptions()
-                    //.icon(BitmapDescriptorFactory.fromBitmap(bm))
-                    .position(new LatLng(0.0,0.0))
-                    .title(Integer.toString(imageID));
+                    .position(new LatLng(0.0,0.0));
                     //.draggable(true);
         }
-        map.addMarker(markerOptions);
-        map.animateCamera(CameraUpdateFactory.newLatLngZoom(markerOptions.getPosition(), 12.0f));
-        photos[imageID] = bm;
-        imageID++;
+        m = map.addMarker(markerOptions);
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(m.getPosition(),17));
+        m.getId();
+        photoConnector[photoConnectorTracker] = new MarkerPhoto(m.getId(), bm);
+        photoConnectorTracker++;
     }
 
     private void requestPermissions(){
@@ -188,7 +211,9 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
             ActivityCompat.requestPermissions(this.getActivity(),
                     new String[]{Manifest.permission.ACCESS_COARSE_LOCATION},
                     MY_PERMISSIONS_REQUEST_COARSE_LOCATION);
-
+        }
+        else {
+            mRequestingLocationUpdates = true;
         }
         if (ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -197,7 +222,9 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
                     new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     MY_PERMISSIONS_REQUEST_FINE_LOCATION);
         }
-
+        else {
+            mRequestingLocationUpdates = true;
+        }
         myFusedLocationClient.getLastLocation()
                 .addOnSuccessListener(this.getActivity(), new OnSuccessListener<Location>() {
                     @Override
@@ -220,11 +247,9 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // permission was granted, yay! Do the
-                    // contacts-related task you need to do.
+                    mRequestingLocationUpdates = true;
                 } else {
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
+                    mRequestingLocationUpdates = false;
                 }
                 return;
             }
@@ -232,11 +257,9 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // permission was granted, yay! Do the
-                    // contacts-related task you need to do.
+                    mRequestingLocationUpdates = true;
                 } else {
-                    // permission denied, boo! Disable the
-                    // functionality that depends on this permission.
+                   mRequestingLocationUpdates = false;
                 }
                 return;
             }
@@ -261,4 +284,37 @@ public class MapFragment extends Fragment implements OnMapReadyCallback, Floatin
                     });
         }
     }
+
+    private void startLocationUpdates() {
+        if(ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+                && ContextCompat.checkSelfPermission(this.getActivity(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            createLocationRequest();
+            myFusedLocationClient.requestLocationUpdates(locationRequest,
+                    locationCallback,
+                    null /* Looper */);
+        }
+    }
+
+    private void stopLocationUpdates() {
+        myFusedLocationClient.removeLocationUpdates(locationCallback);
+    }
+
+    private void createLocationRequest() {
+        locationRequest = LocationRequest.create();
+        locationRequest.setInterval(5000);
+        locationRequest.setFastestInterval(2000);
+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+    }
+
+    private Bitmap findPhotoByID(String id){
+        for(int i = 0; i < photoConnectorTracker; i++){
+            if (photoConnector[i].getMarkerID().equalsIgnoreCase(id)){
+                return photoConnector[i].getMarkerPhoto();
+            }
+        }
+        return null;
+    }
+
 }
